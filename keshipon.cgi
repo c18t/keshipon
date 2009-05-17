@@ -6,6 +6,7 @@ use warnings;
 use Encode;
 
 binmode STDOUT => ':utf8';
+binmode STDERR => ':utf8';
 
 BEGIN {
 	$SIG{__DIE__} = sub {
