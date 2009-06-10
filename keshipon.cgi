@@ -25,18 +25,31 @@ BEGIN {
 my $enc = find_encoding('utf8');
 my %c;
 my $c = 0;
+my $line_c = 0;
 my %F = get_query();
-my $quality = exists $F{q} && $F{q} !~ /\D/ ? $F{q} : 80;
+my $quality = exists $F{q} && $F{q} !~ /\D/ ? $F{q} : 60;
 my $over = exists $F{o} ? 1 : 0;
+my $ascii = exists $F{a} ? 1 : 0;
+my $line = exists $F{l} ? 1 : 0;
+my $random = exists $F{r} ? 1 : 0;
 my $source = $F{s};
 if (!$source) {
 	$quality = 20 unless exists $F{q} && $F{q} !~ /\D/;
+	$ascii = 1;
 	$source = <<"_SOURCE_";
-s にソースを、 q に何%消しポンするかを指定してね
-o を指定すると消しポンで上書きするよ
-p に文字列を指定すると好きな文字で消しポンできるよ
+s にソースを、 q に何%ケシポンするかを指定してね
+o を指定するとケシポンで上書きするよ
+a を指定するとアスキー文字(半角の英数記号だよ)はケシポンしないよ
+p に文字列を指定すると好きな文字でケシポンできるよ
+
+l を指定すると順番にケシポン文字を使うよ
+r を指定するとランダムにケシポン文字を使うよ
+l も r も指定しないとソースの文字ごとに決まった順番でケシポン文字を使うよ
 
 データはUTF-8で送ってね
+
+詳しくはこちら → http://github.com/Uchimata/keshipon/tree/master
+
 _SOURCE_
 }
 my @pon = $F{p} ? split //, $F{p} : qw(
@@ -79,17 +92,35 @@ sub keshipon {
 	map {
 		if (/./ && !$c{++$cc} && check_quality($cc) && int rand(101) <= $quality) {
 			$c{$cc} = ++$c;
-			$t = ((hex unpack 'h*', $enc->encode($_)) =~ /(\d{1,$l})$/)[0];
-			if ($over) {
-				$pon[($t <= $#pon ? $t : rand @pon)];
-			}
-			else {
-				(random($_, $t));
+
+			$t = hex unpack('H*', $enc->encode($_));
+			$_ = $ascii && $t < 128 ? $_ : $over ? do {
+				$t = $line ? $line_c++ : substr($t, -$l, $l);
+				$t -= $#pon while $t > $#pon;
+				$pon[$random ? rand $#pon : $t];
+			} : do {
+				$random ? do { random($_,$t) } : do {
+					my $s = '';
+					my $n = 0;
+					my $z = 5 - $quality / 25;
+					my $a = int(substr($t, -1, 1) / $z)+1;
+					my $b = int(substr($t, -2, 1) / $z)+1 || 5-int($a/$z)+1;
+					my $p = substr($t, -$l, $l);
+					my $q = 0;
+					for my $x (-$a .. $b) {
+						if ($x == 0) { $s .= $_; next; }
+						if ($n > length $t) { $t *= 7; $n = 0; }
+						$q = $line ? $x : substr($t, $n++, 1);
+						$p += $#pon while $p+$q < $#pon;
+						$p -= $#pon while $p+$q > $#pon;
+						$s .= $pon[$p+$q];
+					}
+					$s;
+				}
 			}
 		}
-		else {
-			$_;
-		}
+
+		$_;
 	} @_;
 }
 
